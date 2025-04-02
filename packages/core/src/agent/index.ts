@@ -18,6 +18,7 @@ import type { ZodSchema, z } from 'zod';
 
 import type { MastraPrimitives, MastraUnion } from '../action';
 import { MastraBase } from '../base';
+import { Container } from '../di/container';
 import type { Metric } from '../eval';
 import { AvailableHooks, executeHook } from '../hooks';
 import type { GenerateReturn, StreamReturn } from '../llm';
@@ -161,6 +162,7 @@ export class Agent<
   async generateTitleFromUserMessage({ message }: { message: CoreUserMessage }) {
     // need to use text, not object output or it will error for models that don't support structured output (eg Deepseek R1)
     const { text } = await this.llm.__text<{ title: string }>({
+      container: new Container(),
       messages: [
         {
           role: 'system',
@@ -469,11 +471,13 @@ export class Agent<
     threadId,
     resourceId,
     runId,
+    container,
   }: {
     toolsets?: ToolsetsInput;
     threadId?: string;
     resourceId?: string;
     runId?: string;
+    container: Container;
   }): Record<string, CoreTool> {
     this.logger.debug(`[Agents:${this.name}] - Assigning tools`, { runId, threadId, resourceId });
 
@@ -502,6 +506,7 @@ export class Agent<
             mastra: mastraProxy as MastraUnion | undefined,
             memory,
             agentName: this.name,
+            container,
           };
           memo[k] = makeCoreTool(tool, options);
         }
@@ -581,6 +586,7 @@ export class Agent<
             resourceId,
             logger: this.logger,
             agentName: this.name,
+            container,
           };
           toolsFromToolsetsConverted[toolName] = makeCoreTool(toolObj, options, 'toolset');
         });
@@ -631,6 +637,7 @@ export class Agent<
     resourceId,
     runId,
     toolsets,
+    container,
   }: {
     instructions?: string;
     toolsets?: ToolsetsInput;
@@ -640,6 +647,7 @@ export class Agent<
     context?: CoreMessage[];
     runId?: string;
     messages: CoreMessage[];
+    container: Container;
   }) {
     return {
       before: async () => {
@@ -709,7 +717,7 @@ export class Agent<
           if (this.getMemory() && resourceId) {
             reasons.push('memory and resourceId available');
           }
-
+          console.log({ container });
           this.logger.debug(`[Agent:${this.name}] - Enhancing tools: ${reasons.join(', ')}`, {
             runId,
             toolsets: toolsets ? Object.keys(toolsets) : undefined,
@@ -721,6 +729,7 @@ export class Agent<
             threadId: threadIdToUse,
             resourceId,
             runId,
+            container,
           });
         }
 
@@ -876,6 +885,7 @@ export class Agent<
       toolChoice = 'auto',
       experimental_output,
       telemetry,
+      container,
       ...rest
     }: AgentGenerateOptions<Z> = {},
   ): Promise<
@@ -907,6 +917,7 @@ export class Agent<
 
     const runIdToUse = runId || randomUUID();
 
+    const normalizedContainer = container ?? new Container();
     const { before, after } = this.__primitive({
       instructions,
       messages: messagesToUse,
@@ -916,6 +927,7 @@ export class Agent<
       resourceId,
       runId: runIdToUse,
       toolsets,
+      container: normalizedContainer,
     });
 
     const { threadId, thread, messageObjects, convertedTools } = await before();
@@ -936,6 +948,7 @@ export class Agent<
         threadId,
         resourceId,
         memory: this.getMemory(),
+        container: normalizedContainer,
         ...rest,
       });
 
@@ -966,6 +979,7 @@ export class Agent<
         threadId,
         resourceId,
         memory: this.getMemory(),
+        container: normalizedContainer,
         ...rest,
       });
 
@@ -990,6 +1004,7 @@ export class Agent<
       toolChoice,
       telemetry,
       memory: this.getMemory(),
+      container: normalizedContainer,
       ...rest,
     });
 
@@ -1037,12 +1052,14 @@ export class Agent<
       toolChoice = 'auto',
       experimental_output,
       telemetry,
+      container,
       ...rest
     }: AgentStreamOptions<Z> = {},
   ): Promise<
     | StreamTextResult<any, Z extends ZodSchema ? z.infer<Z> : unknown>
     | StreamObjectResult<any, Z extends ZodSchema ? z.infer<Z> : unknown, any>
   > {
+    const normalizedContainer = container ?? new Container();
     const runIdToUse = runId || randomUUID();
 
     let messagesToUse: CoreMessage[] = [];
@@ -1075,6 +1092,7 @@ export class Agent<
       resourceId,
       runId: runIdToUse,
       toolsets,
+      container: normalizedContainer,
     });
 
     const { threadId, thread, messageObjects, convertedTools } = await before();
@@ -1109,6 +1127,7 @@ export class Agent<
         toolChoice,
         experimental_output,
         memory: this.getMemory(),
+        container: normalizedContainer,
         ...rest,
       });
 
@@ -1144,6 +1163,7 @@ export class Agent<
         toolChoice,
         telemetry,
         memory: this.getMemory(),
+        container: normalizedContainer,
         ...rest,
       }) as unknown as StreamReturn<Z>;
     }
@@ -1177,6 +1197,7 @@ export class Agent<
       toolChoice,
       telemetry,
       memory: this.getMemory(),
+      container: normalizedContainer,
       ...rest,
     }) as unknown as StreamReturn<Z>;
   }
